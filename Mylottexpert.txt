@@ -15465,22 +15465,47 @@ if (!function_exists('mylottoexpertV150RenderAdminHiveResearchConsole')) {
             var base = byId('mle-v150-skai-url').value || '/picking-winning-numbers/artificial-intelligence/skai-lottery-prediction';
             var sep = base.indexOf('?') === -1 ? '?' : '&';
             var s = a.settings || {};
+            var assignmentId = a.assignment_id || s._mle_research_assignment_id || '';
+            var queueId = a.queue_id || s._mle_research_queue_id || '';
+            var lotteryId = a.lottery_id || s.lottery_id || '';
+            var gameId = a.game_id || s.game_id || '';
+            var targetDrawDate = a.target_draw_date || s.target_draw_date || '';
+            var testVariable = s._mle_global_learning_setting_key || 'v156_admin_chunk_sweep';
+            var testValue = a.settings_fingerprint || s._mle_research_settings_fingerprint || '';
+            var batchLabel = 'Hive Research Assignment #' + String(assignmentId || '');
             if(a.chunk_assignments && a.chunk_assignments.length){
               return base + sep
-                + 'gameId=' + encodeURIComponent(a.game_id || '')
-                + '&gid=' + encodeURIComponent(a.game_id || '')
+                + 'gameId=' + encodeURIComponent(gameId || '')
+                + '&gid=' + encodeURIComponent(gameId || '')
                 + '&hive_auto_research=1&hive_research_chunk=1'
                 + '&hive_chunk_key=' + encodeURIComponent(a.chunk_key || '')
+                + '&source_batch_queue_id=' + encodeURIComponent(queueId || '')
+                + '&source_batch_lottery_id=' + encodeURIComponent(lotteryId || '')
+                + '&source_batch_game_id=' + encodeURIComponent(gameId || '')
+                + '&source_batch_mode=' + encodeURIComponent('admin_hive_research_chunk')
+                + '&source_batch_is_admin_queue=1'
+                + '&source_batch_is_control=0'
                 + '&mle_guided_mode=admin_hive_chunk_runner&mle_command_source=mle_admin_hive_console';
             }
             return base + sep
-              + 'gameId=' + encodeURIComponent(a.game_id || '')
-              + '&gid=' + encodeURIComponent(a.game_id || '')
+              + 'gameId=' + encodeURIComponent(gameId || '')
+              + '&gid=' + encodeURIComponent(gameId || '')
               + '&hive_auto_research=1'
-              + '&mle_research_queue_id=' + encodeURIComponent(a.queue_id || '')
-              + '&mle_research_assignment_id=' + encodeURIComponent(a.assignment_id || '')
+              + '&mle_research_queue_id=' + encodeURIComponent(queueId || '')
+              + '&mle_research_assignment_id=' + encodeURIComponent(assignmentId || '')
               + '&mle_research_type=admin_client_research'
               + '&mle_settings_fingerprint=' + encodeURIComponent(a.settings_fingerprint || '')
+              + '&source_batch_assignment_id=' + encodeURIComponent(assignmentId || '')
+              + '&source_batch_queue_id=' + encodeURIComponent(queueId || '')
+              + '&source_batch_lottery_id=' + encodeURIComponent(lotteryId || '')
+              + '&source_batch_game_id=' + encodeURIComponent(gameId || '')
+              + '&source_batch_target_draw_date=' + encodeURIComponent(targetDrawDate || '')
+              + '&source_batch_label=' + encodeURIComponent(batchLabel)
+              + '&source_batch_mode=' + encodeURIComponent('admin_hive_research_queue')
+              + '&source_batch_is_admin_queue=1'
+              + '&source_batch_is_control=0'
+              + '&source_batch_test_variable=' + encodeURIComponent(testVariable)
+              + '&source_batch_test_value=' + encodeURIComponent(testValue)
               + '&mle_guided_mode=admin_hive_runner&mle_command_source=mle_admin_hive_console'
               + '&hive_settings_json=' + encodeURIComponent(JSON.stringify(s));
           }
@@ -28595,6 +28620,18 @@ if ($__mleAction === 'create_skai_batch') {
                 'mle_research_assignment_id' => (int)$__batchResearchAssignmentId,
                 'mle_research_type' => (string)$__batchResearchType,
                 'mle_settings_fingerprint' => (string)($__batchResearchFingerprint['hash'] ?? ''),
+                'source_batch_assignment_id' => (int)$__batchResearchAssignmentId,
+                'source_batch_id' => (int)$__batchHeaderId,
+                'source_batch_queue_id' => (int)$__batchResearchQueueId,
+                'source_batch_lottery_id' => (int)$__batchLotteryId,
+                'source_batch_game_id' => (string)$__batchGameIdForResearch,
+                'source_batch_target_draw_date' => (string)$__batchTargetDrawDate,
+                'source_batch_label' => (string)$__batchTypeLabel,
+                'source_batch_mode' => (string)$__batchResearchType,
+                'source_batch_is_admin_queue' => ((int)$__batchResearchAssignmentId > 0 || (int)$__batchResearchQueueId > 0 || stripos((string)$__batchResearchType, 'admin') !== false || stripos((string)$__batchResearchType, 'hive') !== false) ? 1 : 0,
+                'source_batch_is_control' => 0,
+                'source_batch_test_variable' => (string)$__batchTestVar,
+                'source_batch_test_value' => (string)($__batchPlan['batch_run_values'][0] ?? ''),
                 'mle_assignment_policy' => (string)($__batchPlan['_mle_v101_assignment_policy'] ?? 'single_user_unique_first_assignment'),
                 'mle_refinement_round' => (int)($__batchPlan['_mle_v101_refinement_round'] ?? 0),
                 'mle_guided_mode' => 'required',

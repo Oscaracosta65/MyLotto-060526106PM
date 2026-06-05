@@ -16990,13 +16990,39 @@ $skaiSourceBatchRunId    = (int) $in->getInt('source_batch_run_id', 0);
 $skaiSourceBatchRunOrder = (int) $in->getInt('source_batch_run_order', 0);
 if ($skaiSourceBatchId <= 0 && !empty($skaiSourceBatchIdForTarget)) { $skaiSourceBatchId = (int)$skaiSourceBatchIdForTarget; }
 if ($skaiSourceBatchRunOrder <= 0 && !empty($skaiSourceBatchRunOrderForTarget)) { $skaiSourceBatchRunOrder = (int)$skaiSourceBatchRunOrderForTarget; }
+$skaiSourceBatchAssignmentId = (int)$in->getInt('source_batch_assignment_id', 0);
+if ($skaiSourceBatchAssignmentId <= 0) { $skaiSourceBatchAssignmentId = (int)$in->getInt('mle_research_assignment_id', 0); }
+if ($skaiSourceBatchAssignmentId <= 0) { $skaiSourceBatchAssignmentId = (int)$in->getInt('hive_assignment_id', 0); }
+$skaiSourceBatchQueueId = (int)$in->getInt('source_batch_queue_id', 0);
+if ($skaiSourceBatchQueueId <= 0) { $skaiSourceBatchQueueId = (int)$in->getInt('mle_research_queue_id', 0); }
+if ($skaiSourceBatchQueueId <= 0) { $skaiSourceBatchQueueId = (int)$in->getInt('hive_queue_id', 0); }
+$skaiSourceBatchLotteryId = (int)$in->getInt('source_batch_lottery_id', 0);
+$skaiSourceBatchGameId = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', (string)$in->getString('source_batch_game_id', ''));
+$skaiSourceBatchTargetDrawDate = trim((string)$in->getString('source_batch_target_draw_date', ''));
+if ($skaiSourceBatchTargetDrawDate !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $skaiSourceBatchTargetDrawDate)) { $skaiSourceBatchTargetDrawDate = ''; }
+$skaiSourceBatchLabel = mb_substr(trim((string)$in->getString('source_batch_label', '')), 0, 191, 'UTF-8');
+$skaiSourceBatchMode = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', strtolower((string)$in->getString('source_batch_mode', '')));
+if ($skaiSourceBatchMode === '') { $skaiSourceBatchMode = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', strtolower((string)$in->getString('mle_research_type', ''))); }
+if ($skaiSourceBatchMode === '') { $skaiSourceBatchMode = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', strtolower((string)$in->getString('hive_research_type', ''))); }
+$skaiSourceBatchIsAdminQueue = (int)$in->getInt('source_batch_is_admin_queue', 0);
+$skaiSourceBatchIsControl = (int)$in->getInt('source_batch_is_control', -1);
 $skaiBatchControlFlag    = (int) $in->getInt('batch_control_flag', 0);
+if ($skaiSourceBatchIsControl < 0) { $skaiSourceBatchIsControl = $skaiBatchControlFlag ? 1 : 0; }
+if ($skaiSourceBatchIsAdminQueue <= 0) {
+    if (strpos($skaiSourceBatchMode, 'admin') !== false || strpos($skaiSourceBatchMode, 'hive') !== false) {
+        $skaiSourceBatchIsAdminQueue = 1;
+    }
+}
 $skaiSourceBatchType     = preg_replace('/[^a-zA-Z0-9 _\-]/', '', (string) $in->getString('source_batch_type', ''));
 $skaiSourceBatchOrigin   = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string) $in->getString('source_batch_origin', ''));
 $skaiBatchTestVariable   = preg_replace('/[^a-zA-Z0-9 _\-\.]/', '', (string) $in->getString('source_batch_test_variable', ''));
 $skaiBatchTestValue      = preg_replace('/[^a-zA-Z0-9 _\-\.%]/', '', (string) $in->getString('source_batch_test_value', ''));
 $skaiHasRealBatchIdentity = ($skaiSourceBatchId > 0 && $skaiSourceBatchRunOrder >= 1 && $skaiSourceBatchRunOrder <= 9);
 $skaiBatchOriginSource = ($skaiSourceBatchOrigin !== '') ? $skaiSourceBatchOrigin : 'mle_precision_lock_batch';
+$skaiGuidedModePosted = preg_replace('/[^a-zA-Z0-9_\-]/', '', strtolower((string)$in->getString('mle_guided_mode', '')));
+$skaiHasAdminQueueContext = ($skaiSourceBatchIsAdminQueue > 0 || strpos($skaiSourceBatchMode, 'admin') !== false || strpos($skaiSourceBatchMode, 'hive') !== false || strpos($skaiGuidedModePosted, 'admin_hive') !== false || (int)$in->getInt('hive_auto_research', 0) === 1);
+if ($skaiHasAdminQueueContext && $skaiSourceBatchOrigin === '') { $skaiBatchOriginSource = 'mle_admin_hive_queue'; }
+$skaiBatchModeForLog = ($skaiSourceBatchMode !== '') ? $skaiSourceBatchMode : ($skaiHasAdminQueueContext ? 'admin_hive_research_queue' : 'precision_lock_batch');
 $skaiBatchTracking = [];
 if ($skaiHasRealBatchIdentity) {
     $skaiBatchTracking = [
@@ -17011,6 +17037,19 @@ if ($skaiHasRealBatchIdentity) {
         'test_value' => $skaiBatchTestValue,
     ];
 }
+if ($skaiHasAdminQueueContext) {
+    $skaiBatchTracking['origin_source'] = (string)$skaiBatchOriginSource;
+    $skaiBatchTracking['assignment_id'] = (int)$skaiSourceBatchAssignmentId;
+    $skaiBatchTracking['queue_id'] = (int)$skaiSourceBatchQueueId;
+    $skaiBatchTracking['lottery_id'] = ($skaiSourceBatchLotteryId > 0 ? (int)$skaiSourceBatchLotteryId : (int)$lotteryId);
+    $skaiBatchTracking['game_id'] = ($skaiSourceBatchGameId !== '' ? (string)$skaiSourceBatchGameId : (string)$saveGameId);
+    $skaiBatchTracking['target_draw_date'] = ($skaiSourceBatchTargetDrawDate !== '' ? (string)$skaiSourceBatchTargetDrawDate : (string)($predictionTarget['target_draw_date'] ?? ''));
+    $skaiBatchTracking['batch_label'] = ($skaiSourceBatchLabel !== '' ? (string)$skaiSourceBatchLabel : (string)$label);
+    $skaiBatchTracking['batch_mode'] = (string)$skaiBatchModeForLog;
+    $skaiBatchTracking['is_admin_queue'] = 1;
+    $skaiBatchTracking['is_control'] = ($skaiSourceBatchIsControl > 0 ? 1 : 0);
+}
+skai_debug_log('[SKAI BATCH CONTEXT] mode=' . (string)$skaiBatchModeForLog . ' admin_queue=' . (int)$skaiHasAdminQueueContext . ' assignment_id=' . (int)$skaiSourceBatchAssignmentId . ' queue_id=' . (int)$skaiSourceBatchQueueId . ' source_batch_id=' . (int)$skaiSourceBatchId . ' source_batch_run_order=' . (int)$skaiSourceBatchRunOrder . ' source_batch_label=' . preg_replace('/[\r\n\t]+/', ' ', (string)$skaiSourceBatchLabel));
 
 // [[SKAI_BATCH_IDENTITY_DEMOTION_GUARD_2026_06_03]]
 // Outside explicit batch-save mode, do not trust posted batch identity unless it
@@ -17091,8 +17130,10 @@ if (!$skaiBatchSaveMode && $skaiHasRealBatchIdentity) {
 // SKAI runs, whether they were launched by MyLottoExpert or manually from SKAI.
 $skaiHiveQueueId = (int)$in->getInt('mle_research_queue_id', 0);
 if ($skaiHiveQueueId <= 0) { $skaiHiveQueueId = (int)$in->getInt('hive_queue_id', 0); }
+if ($skaiHiveQueueId <= 0) { $skaiHiveQueueId = (int)$skaiSourceBatchQueueId; }
 $skaiHiveAssignmentId = (int)$in->getInt('mle_research_assignment_id', 0);
 if ($skaiHiveAssignmentId <= 0) { $skaiHiveAssignmentId = (int)$in->getInt('hive_assignment_id', 0); }
+if ($skaiHiveAssignmentId <= 0) { $skaiHiveAssignmentId = (int)$skaiSourceBatchAssignmentId; }
 $skaiHiveResearchType = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$in->getString('mle_research_type', ''));
 if ($skaiHiveResearchType === '') { $skaiHiveResearchType = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$in->getString('hive_research_type', '')); }
 $skaiHiveSettingKey = preg_replace('/[^a-zA-Z0-9_\-.]/', '', (string)$in->getString('mle_research_setting_key', ''));
@@ -17515,14 +17556,14 @@ $row = (object) [
     'hive_contract_status'           => $skaiHiveContractStatus,
     'hive_contract_json'             => $skaiHiveContractJson,
     'hive_contract_missing_json'     => $skaiHiveContractMissingJson,
-    'source_batch_id'        => ($skaiHasRealBatchIdentity ? $skaiSourceBatchId : null),
+    'source_batch_id'        => (($skaiHasRealBatchIdentity || ($skaiHasAdminQueueContext && $skaiSourceBatchId > 0)) ? $skaiSourceBatchId : null),
     'source_batch_run_id'    => ($skaiHasRealBatchIdentity && $skaiSourceBatchRunId > 0 ? $skaiSourceBatchRunId : null),
-    'source_batch_type'      => ($skaiHasRealBatchIdentity ? ($skaiSourceBatchType !== '' ? $skaiSourceBatchType : 'SKAI Precision Lock Batch') : null),
+    'source_batch_type'      => (($skaiHasRealBatchIdentity || $skaiHasAdminQueueContext) ? ($skaiSourceBatchType !== '' ? $skaiSourceBatchType : ($skaiHasAdminQueueContext ? 'Admin SKAI/Hive Research Queue' : 'SKAI Precision Lock Batch')) : null),
     'source_batch_run_order' => ($skaiHasRealBatchIdentity ? $skaiSourceBatchRunOrder : null),
-    'source_batch_origin'    => ($skaiHasRealBatchIdentity ? $skaiBatchOriginSource : null),
-    'batch_control_flag'     => ($skaiHasRealBatchIdentity && $skaiBatchControlFlag ? 1 : 0),
-    'source_batch_test_variable' => ($skaiHasRealBatchIdentity && $skaiBatchTestVariable !== '' ? $skaiBatchTestVariable : null),
-    'source_batch_test_value'    => ($skaiHasRealBatchIdentity && $skaiBatchTestValue !== '' ? $skaiBatchTestValue : null),
+    'source_batch_origin'    => (($skaiHasRealBatchIdentity || $skaiHasAdminQueueContext) ? $skaiBatchOriginSource : null),
+    'batch_control_flag'     => (($skaiHasRealBatchIdentity || $skaiHasAdminQueueContext) && $skaiSourceBatchIsControl ? 1 : 0),
+    'source_batch_test_variable' => (($skaiHasRealBatchIdentity || $skaiHasAdminQueueContext) && $skaiBatchTestVariable !== '' ? $skaiBatchTestVariable : null),
+    'source_batch_test_value'    => (($skaiHasRealBatchIdentity || $skaiHasAdminQueueContext) && $skaiBatchTestValue !== '' ? $skaiBatchTestValue : null),
 
     'top_combos_json'     => $evidenceJson, // may be NULL if malformed earlier
     'date_saved'          => $nowSql,
@@ -17656,6 +17697,33 @@ $row = (object) [
         } catch (\Throwable $__skaiTrackedBatchValidationFlagEx) {
             $skaiRequiresTrackedMleBatchValidation = !empty($skaiHasRealBatchIdentity);
         }
+        if ($skaiBatchSaveMode && $skaiHasAdminQueueContext) {
+            $skaiAdminMissing = array();
+            if ($skaiSourceBatchAssignmentId <= 0) { $skaiAdminMissing[] = 'source_batch_assignment_id'; }
+            if (!empty($skaiAdminMissing)) {
+                $skaiAdminReceived = array(
+                    'source_batch_assignment_id' => (int)$skaiSourceBatchAssignmentId,
+                    'source_batch_queue_id' => (int)$skaiSourceBatchQueueId,
+                    'source_batch_id' => (int)$skaiSourceBatchId,
+                    'source_batch_mode' => (string)$skaiBatchModeForLog,
+                    'source_batch_label' => (string)$skaiSourceBatchLabel,
+                    'source_batch_is_admin_queue' => (int)$skaiSourceBatchIsAdminQueue,
+                    'source_batch_is_control' => (int)$skaiSourceBatchIsControl,
+                    'mle_research_assignment_id' => (int)$in->getInt('mle_research_assignment_id', 0),
+                    'hive_assignment_id' => (int)$in->getInt('hive_assignment_id', 0),
+                );
+                skai_debug_log('[SKAI BATCH SAVE BLOCKED] reason=batch_context_missing mode=admin_hive assignment_id=' . (int)$skaiSourceBatchAssignmentId . ' queue_id=' . (int)$skaiSourceBatchQueueId . ' missing=' . implode(',', $skaiAdminMissing));
+                $skaiRespondBatchJson(false, [
+                    'reason' => 'batch_context_missing',
+                    'missing_fields' => $skaiAdminMissing,
+                    'received_batch_fields' => $skaiAdminReceived,
+                    'batch_index' => (int)$skaiBatchSaveIndex,
+                    'batch_total' => (int)$skaiBatchSaveTotal,
+                    'batch_label' => (string)$skaiBatchSaveLabel
+                ]);
+            }
+        }
+        if ($skaiHasAdminQueueContext) { $skaiRequiresTrackedMleBatchValidation = false; }
         if ($skaiBatchSaveMode && $skaiRequiresTrackedMleBatchValidation) {
             $skaiBatchValidationFail = '';
             $skaiHeaderLotteryId = 0;
@@ -17703,9 +17771,26 @@ $row = (object) [
                 }
             }
             if ($skaiBatchValidationFail !== '') {
+                $skaiTrackedMissing = array();
+                if ($skaiBatchValidationFail === 'batch_context_missing') {
+                    if ($skaiSourceBatchId <= 0) { $skaiTrackedMissing[] = 'source_batch_id'; }
+                    if ($skaiSourceBatchRunOrder < 1 || $skaiSourceBatchRunOrder > 9) { $skaiTrackedMissing[] = 'source_batch_run_order'; }
+                }
+                $skaiTrackedReceived = array(
+                    'source_batch_id' => (int)$skaiSourceBatchId,
+                    'source_batch_run_order' => (int)$skaiSourceBatchRunOrder,
+                    'source_batch_run_id' => (int)$skaiSourceBatchRunId,
+                    'source_batch_label' => (string)$skaiSourceBatchLabel,
+                    'source_batch_mode' => (string)$skaiBatchModeForLog,
+                    'source_batch_queue_id' => (int)$skaiSourceBatchQueueId,
+                    'source_batch_assignment_id' => (int)$skaiSourceBatchAssignmentId,
+                    'source_batch_is_admin_queue' => (int)$skaiSourceBatchIsAdminQueue
+                );
                 skai_debug_log('[SKAI BATCH SAVE BLOCKED] reason=' . $skaiBatchValidationFail . ' uid=' . (int)$user->id . ' batch_id=' . (int)$skaiSourceBatchId . ' run_order=' . (int)$skaiSourceBatchRunOrder . ' saved_lottery_id=' . (int)$skaiSavedLotteryId . ' target_lottery_id=' . (int)$skaiTargetLotteryId . ' header_lottery_id=' . (int)$skaiHeaderLotteryId);
                 $skaiRespondBatchJson(false, [
                     'reason' => (string)$skaiBatchValidationFail,
+                    'missing_fields' => $skaiTrackedMissing,
+                    'received_batch_fields' => $skaiTrackedReceived,
                     'batch_index' => (int)$skaiBatchSaveIndex,
                     'batch_total' => (int)$skaiBatchSaveTotal,
                     'batch_label' => (string)$skaiBatchSaveLabel
@@ -60181,6 +60266,99 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (_) {}
     return 0;
   }
+  function skaiMleAsInt(v) {
+    var n = parseInt(v, 10);
+    return isFinite(n) ? n : 0;
+  }
+  function skaiMleAsBoolInt(v) {
+    var s = String(v == null ? '' : v).toLowerCase();
+    if (s === '1' || s === 'true' || s === 'yes') { return 1; }
+    return skaiMleAsInt(v) > 0 ? 1 : 0;
+  }
+  function skaiMleSafeText(v, maxLen) {
+    var out = String(v == null ? '' : v);
+    if (typeof maxLen === 'number' && maxLen > 0 && out.length > maxLen) { out = out.substring(0, maxLen); }
+    return out;
+  }
+  function skaiMleNormalizeBatchContext(seed) {
+    seed = seed || {};
+    var ctx = {
+      assignment_id: skaiMleAsInt(seed.assignment_id || seed.source_batch_assignment_id || seed.mle_research_assignment_id || seed.hive_assignment_id || 0),
+      batch_id: skaiMleAsInt(seed.batch_id || seed.source_batch_id || 0),
+      queue_id: skaiMleAsInt(seed.queue_id || seed.source_batch_queue_id || seed.mle_research_queue_id || seed.hive_queue_id || 0),
+      lottery_id: skaiMleAsInt(seed.lottery_id || seed.source_batch_lottery_id || skaiMleGetUrlParam('lottery_id') || 0),
+      game_id: skaiMleSafeText(seed.game_id || seed.source_batch_game_id || skaiMleGetUrlParam('game_id') || skaiMleGetUrlParam('gameId') || skaiMleGetUrlParam('gid') || '', 50),
+      target_draw_date: skaiMleSafeText(seed.target_draw_date || seed.source_batch_target_draw_date || '', 20),
+      batch_label: skaiMleSafeText(seed.batch_label || seed.source_batch_label || seed.label || '', 191),
+      batch_mode: skaiMleSafeText(seed.batch_mode || seed.source_batch_mode || '', 80),
+      is_admin_queue: skaiMleAsBoolInt(seed.is_admin_queue || seed.source_batch_is_admin_queue || 0),
+      is_control: skaiMleAsBoolInt(seed.is_control || seed.source_batch_is_control || seed.batch_control_flag || 0),
+      test_variable: skaiMleSafeText(seed.test_variable || seed.source_batch_test_variable || '', 128),
+      test_value: skaiMleSafeText(seed.test_value || seed.source_batch_test_value || '', 128),
+      batch_run_id: skaiMleAsInt(seed.batch_run_id || seed.source_batch_run_id || 0),
+      batch_run_order: skaiMleAsInt(seed.batch_run_order || seed.source_batch_run_order || 0),
+      batch_type: skaiMleSafeText(seed.batch_type || seed.source_batch_type || '', 80),
+      source_batch_origin: skaiMleSafeText(seed.source_batch_origin || seed.batch_origin || '', 80)
+    };
+    var _ctxModeLc = String(ctx.batch_mode || '').toLowerCase();
+    if (!ctx.is_admin_queue && (ctx.assignment_id > 0 || ctx.queue_id > 0)) {
+      if (_ctxModeLc.indexOf('admin') !== -1 || _ctxModeLc.indexOf('hive') !== -1) { ctx.is_admin_queue = 1; }
+    }
+    if (ctx.assignment_id > 0 && ctx.batch_run_id <= 0) { ctx.batch_run_id = ctx.assignment_id; }
+    if (ctx.batch_label === '' && ctx.assignment_id > 0) { ctx.batch_label = 'Hive Research Assignment #' + String(ctx.assignment_id); }
+    return ctx;
+  }
+  function skaiMleMergeBatchContext(primary, fallback) {
+    var out = skaiMleNormalizeBatchContext(primary || {});
+    var fb = skaiMleNormalizeBatchContext(fallback || {});
+    var keys = ['assignment_id','batch_id','queue_id','lottery_id','game_id','target_draw_date','batch_label','batch_mode','is_admin_queue','is_control','test_variable','test_value','batch_run_id','batch_run_order','batch_type','source_batch_origin'];
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      var v = out[k];
+      if ((typeof v === 'number' && v <= 0) || (typeof v !== 'number' && String(v || '') === '')) { out[k] = fb[k]; }
+    }
+    if (out.assignment_id > 0 && out.batch_run_id <= 0) { out.batch_run_id = out.assignment_id; }
+    return out;
+  }
+  function skaiMleBuildPageBatchContext() {
+    var seed = {};
+    seed.assignment_id = skaiMleGetUrlParam('source_batch_assignment_id') || skaiMleGetUrlParam('mle_research_assignment_id') || skaiMleGetUrlParam('hive_assignment_id');
+    seed.queue_id = skaiMleGetUrlParam('source_batch_queue_id') || skaiMleGetUrlParam('mle_research_queue_id') || skaiMleGetUrlParam('hive_queue_id');
+    seed.batch_id = skaiMleGetUrlParam('source_batch_id') || skaiMleGetUrlParam('batch_id');
+    seed.lottery_id = skaiMleGetUrlParam('source_batch_lottery_id') || skaiMleGetUrlParam('lottery_id');
+    seed.game_id = skaiMleGetUrlParam('source_batch_game_id') || skaiMleGetUrlParam('game_id') || skaiMleGetUrlParam('gameId') || skaiMleGetUrlParam('gid');
+    seed.target_draw_date = skaiMleGetUrlParam('source_batch_target_draw_date');
+    seed.batch_label = skaiMleGetUrlParam('source_batch_label');
+    seed.batch_mode = skaiMleGetUrlParam('source_batch_mode') || skaiMleGetUrlParam('mle_research_type');
+    seed.is_admin_queue = skaiMleGetUrlParam('source_batch_is_admin_queue');
+    seed.is_control = skaiMleGetUrlParam('source_batch_is_control');
+    seed.test_variable = skaiMleGetUrlParam('source_batch_test_variable');
+    seed.test_value = skaiMleGetUrlParam('source_batch_test_value') || skaiMleGetUrlParam('mle_settings_fingerprint');
+    seed.batch_run_order = skaiMleGetUrlParam('source_batch_run_order');
+    seed.batch_run_id = skaiMleGetUrlParam('source_batch_run_id');
+    seed.batch_type = skaiMleGetUrlParam('source_batch_type');
+    seed.source_batch_origin = skaiMleGetUrlParam('source_batch_origin');
+    try {
+      if (window.SKAI_MLE_SERVER_BATCH_PAYLOAD && typeof window.SKAI_MLE_SERVER_BATCH_PAYLOAD === 'object') {
+        seed.batch_id = seed.batch_id || window.SKAI_MLE_SERVER_BATCH_PAYLOAD.batch_id;
+        seed.lottery_id = seed.lottery_id || window.SKAI_MLE_SERVER_BATCH_PAYLOAD.lottery_id;
+        seed.game_id = seed.game_id || window.SKAI_MLE_SERVER_BATCH_PAYLOAD.game_id;
+        seed.batch_label = seed.batch_label || window.SKAI_MLE_SERVER_BATCH_PAYLOAD.batch_name;
+        seed.batch_mode = seed.batch_mode || window.SKAI_MLE_SERVER_BATCH_PAYLOAD.batch_type;
+      }
+    } catch (_) {}
+    var normalized = skaiMleNormalizeBatchContext(seed);
+    window.skaiPageMleBatchContext = normalized;
+    return normalized;
+  }
+  function skaiMleEnsureComboBatchContext(combo) {
+    if (!combo || typeof combo !== 'object') { return skaiMleNormalizeBatchContext({}); }
+    var pageCtx = window.skaiPageMleBatchContext || {};
+    var merged = skaiMleMergeBatchContext((combo.mleBatch && typeof combo.mleBatch === 'object') ? combo.mleBatch : {}, pageCtx);
+    combo.mleBatch = merged;
+    return merged;
+  }
+  skaiMleBuildPageBatchContext();
   function skaiMleGuidedRequired() {
     return skaiMleGetUrlParam('mle_skai_batch') === '1'
       && (skaiMleGetUrlParam('mle_guided_mode') === 'required' || skaiMleGetUrlParam('mle_required_action') === 'precision_batch');
@@ -60490,8 +60668,19 @@ document.addEventListener('DOMContentLoaded', function () {
             lottery_name: String(payload.lottery_name || '')
           }
         });
+        try {
+          combos[combos.length - 1].mleBatch.assignment_id = skaiMleAsInt(run.assignment_id || 0);
+          combos[combos.length - 1].mleBatch.queue_id = skaiMleAsInt(payload.queue_id || 0);
+          combos[combos.length - 1].mleBatch.target_draw_date = skaiMleSafeText(run.target_draw_date || payload.target_draw_date || '', 20);
+          combos[combos.length - 1].mleBatch.batch_label = skaiMleSafeText(run.label || payload.batch_name || '', 191);
+          combos[combos.length - 1].mleBatch.batch_mode = skaiMleSafeText(payload.batch_mode || payload.batch_type || 'precision_lock_batch', 80);
+          combos[combos.length - 1].mleBatch.is_admin_queue = skaiMleAsBoolInt(payload.is_admin_queue || 0);
+          combos[combos.length - 1].mleBatch.source_batch_origin = skaiMleSafeText(payload.source_batch_origin || 'mle_precision_lock_batch', 80);
+          skaiMleEnsureComboBatchContext(combos[combos.length - 1]);
+        } catch (_) {}
       }
       MLE_PRECISION_BATCH_CONTEXT = payload;
+      try { window.skaiPageMleBatchContext = skaiMleMergeBatchContext(window.skaiPageMleBatchContext || {}, payload || {}); } catch (_) {}
       return combos;
     } catch (e) {
       try { console.warn('[SKAI Precision Bridge] Could not load MyLottoExpert batch payload', e); } catch (_) {}
@@ -62255,21 +62444,59 @@ document.addEventListener('DOMContentLoaded', function () {
     if (_bfUrlParam('mle_guided_mode') !== '') { _payload['mle_guided_mode'] = _bfUrlParam('mle_guided_mode'); }
     if (_bfUrlParam('mle_command_source') !== '') { _payload['mle_command_source'] = _bfUrlParam('mle_command_source'); }
 
-    var _mleBatch = (r.combo && r.combo.mleBatch) ? r.combo.mleBatch : null;
+    if (r && r.combo) { skaiMleEnsureComboBatchContext(r.combo); }
+    var _mleBatch = (r.combo && r.combo.mleBatch) ? r.combo.mleBatch : skaiMleNormalizeBatchContext({});
     var _ctxBatchId = (window.MLE_PRECISION_BATCH_CONTEXT && window.MLE_PRECISION_BATCH_CONTEXT.batch_id) ? window.MLE_PRECISION_BATCH_CONTEXT.batch_id : '';
-    var _batchIdResolved = skaiMleResolveBatchId((_mleBatch && _mleBatch.batch_id) || _ctxBatchId || 0);
-    var _batchOrderResolved = parseInt((_mleBatch && _mleBatch.batch_run_order) || _payload['batch_save_index'] || (idx + 1), 10) || (idx + 1);
-    if (_batchIdResolved > 0 || (r.combo && r.combo.mlePrecisionLock)) {
-      _payload['origin_source'] = 'mle_precision_lock_batch';
-      if (_batchIdResolved > 0) { _payload['source_batch_id'] = String(_batchIdResolved); }
-      if (_batchIdResolved > 0) { _payload['batch_id'] = String(_batchIdResolved); }
-      if (_mleBatch && _mleBatch.batch_run_id) { _payload['source_batch_run_id'] = String(_mleBatch.batch_run_id); }
-      _payload['source_batch_type'] = String((_mleBatch && _mleBatch.batch_type) || 'SKAI Precision Lock Batch');
-      _payload['source_batch_run_order'] = String(_batchOrderResolved);
-      _payload['source_batch_origin'] = 'mle_precision_lock_batch';
-      _payload['batch_control_flag'] = (_mleBatch && _mleBatch.is_control) ? '1' : '0';
-      _payload['source_batch_test_variable'] = String((_mleBatch && _mleBatch.test_variable) || '');
-      _payload['source_batch_test_value'] = String((_mleBatch && _mleBatch.test_value) || '');
+    var _batchIdResolved = skaiMleResolveBatchId(_mleBatch.batch_id || _ctxBatchId || 0);
+    var _batchOrderResolved = parseInt(_mleBatch.batch_run_order || _payload['batch_save_index'] || (idx + 1), 10) || (idx + 1);
+    var _batchModeResolved = String(_mleBatch.batch_mode || _mleBatch.batch_type || ((r.combo && r.combo.mlePrecisionLock) ? 'precision_lock_batch' : '') || '');
+    var _batchModeResolvedLc = _batchModeResolved.toLowerCase();
+    var _isAdminQueueResolved = skaiMleAsBoolInt(_mleBatch.is_admin_queue || (_batchModeResolvedLc.indexOf('admin') !== -1 ? 1 : 0) || (_batchModeResolvedLc.indexOf('hive') !== -1 ? 1 : 0));
+    var _queueIdResolved = skaiMleAsInt(_mleBatch.queue_id || _hiveQueueId || 0);
+    var _assignmentIdResolved = skaiMleAsInt(_mleBatch.assignment_id || _hiveAssignId || _mleBatch.batch_run_id || 0);
+    var _hasAnyBatchContext = !!(
+      _batchIdResolved > 0 || _queueIdResolved > 0 || _assignmentIdResolved > 0
+      || String(_mleBatch.batch_label || '').length > 0 || String(_mleBatch.test_variable || '').length > 0
+      || (r.combo && r.combo.mlePrecisionLock)
+    );
+    if (_hasAnyBatchContext) {
+      _payload['origin_source'] = _isAdminQueueResolved ? 'mle_admin_hive_queue' : 'mle_precision_lock_batch';
+      _payload['source_batch_assignment_id'] = _assignmentIdResolved > 0 ? String(_assignmentIdResolved) : '';
+      _payload['source_batch_id'] = _batchIdResolved > 0 ? String(_batchIdResolved) : '';
+      _payload['source_batch_queue_id'] = _queueIdResolved > 0 ? String(_queueIdResolved) : '';
+      _payload['source_batch_lottery_id'] = skaiMleAsInt(_mleBatch.lottery_id || 0) > 0 ? String(skaiMleAsInt(_mleBatch.lottery_id || 0)) : '';
+      _payload['source_batch_game_id'] = String(_mleBatch.game_id || '');
+      _payload['source_batch_target_draw_date'] = String(_mleBatch.target_draw_date || '');
+      _payload['source_batch_label'] = String(_mleBatch.batch_label || (r.combo && r.combo.label) || '');
+      _payload['source_batch_mode'] = _batchModeResolved;
+      _payload['source_batch_is_admin_queue'] = _isAdminQueueResolved ? '1' : '0';
+      _payload['source_batch_is_control'] = skaiMleAsBoolInt(_mleBatch.is_control || 0) ? '1' : '0';
+      _payload['source_batch_test_variable'] = String(_mleBatch.test_variable || '');
+      _payload['source_batch_test_value'] = String(_mleBatch.test_value || '');
+      _payload['source_batch_type'] = String(_mleBatch.batch_type || (_isAdminQueueResolved ? 'Admin SKAI/Hive Research Queue' : 'SKAI Precision Lock Batch'));
+      _payload['source_batch_origin'] = String(_mleBatch.source_batch_origin || (_isAdminQueueResolved ? 'mle_admin_hive_queue' : 'mle_precision_lock_batch'));
+      _payload['batch_control_flag'] = skaiMleAsBoolInt(_mleBatch.is_control || 0) ? '1' : '0';
+      if (_batchIdResolved > 0) {
+        _payload['batch_id'] = String(_batchIdResolved);
+        _payload['source_batch_run_order'] = String(_batchOrderResolved);
+      }
+      if (_mleBatch.batch_run_id && !_isAdminQueueResolved) { _payload['source_batch_run_id'] = String(_mleBatch.batch_run_id); }
+      if (_isAdminQueueResolved) {
+        if (!_payload['mle_research_queue_id'] && _queueIdResolved > 0) { _payload['mle_research_queue_id'] = String(_queueIdResolved); }
+        if (!_payload['mle_research_assignment_id'] && _assignmentIdResolved > 0) { _payload['mle_research_assignment_id'] = String(_assignmentIdResolved); }
+      }
+      try {
+        console.log('[SKAI BATCH CONTEXT PAYLOAD]',
+          {
+            batch_index: idx + 1,
+            source_batch_assignment_id: _payload['source_batch_assignment_id'] || '',
+            source_batch_id: _payload['source_batch_id'] || '',
+            source_batch_queue_id: _payload['source_batch_queue_id'] || '',
+            source_batch_mode: _payload['source_batch_mode'] || '',
+            source_batch_is_admin_queue: _payload['source_batch_is_admin_queue'] || '0'
+          }
+        );
+      } catch (_) {}
     }
 
     // 5. Serialize payload to POST body
@@ -62313,7 +62540,17 @@ document.addEventListener('DOMContentLoaded', function () {
         if (doneCallback) { doneCallback({ ok: false, failedIndex: idx, detail: _detail }); }
       }
     };
-    if (skaiMleGuidedRequired() && !skaiMleGuidedCancelled() && _batchIdResolved <= 0) {
+    if (_isAdminQueueResolved && _assignmentIdResolved <= 0) {
+      _onSaveReady({
+        ok: false,
+        batch_save_mode: true,
+        batch_index: idx + 1,
+        reason: 'batch_context_missing',
+        message: 'Admin queue run is missing source_batch_assignment_id.'
+      });
+      return;
+    }
+    if (skaiMleGuidedRequired() && !skaiMleGuidedCancelled() && !_isAdminQueueResolved && _batchIdResolved <= 0) {
       _onSaveReady({
         ok: false,
         batch_save_mode: true,
@@ -62991,9 +63228,9 @@ $skaiV158Token = \Joomla\CMS\Session\Session::getFormToken();
     xhr.send(body);
   }
   function makeComboFromAssignment(a, ordinal, total){
-    a=a||{}; var settings=a.settings||{}; var assignmentId=a.assignment_id||settings._mle_research_assignment_id||''; var queueId=a.queue_id||settings._mle_research_queue_id||''; var fp=a.settings_fingerprint||settings._mle_research_settings_fingerprint||'';
+    a=a||{}; var settings=a.settings||{}; var assignmentId=a.assignment_id||settings._mle_research_assignment_id||''; var queueId=a.queue_id||settings._mle_research_queue_id||''; var fp=a.settings_fingerprint||settings._mle_research_settings_fingerprint||''; var sourceBatchId=a.batch_id||a.batch_header_id||settings.batch_id||settings.batch_header_id||settings._mle_batch_id||0;
     settings._mle_research_queue_id=queueId; settings._mle_research_assignment_id=assignmentId; settings._mle_research_type='admin_client_research'; settings._mle_research_settings_fingerprint=fp; settings._mle_global_learning_setting_key=settings._mle_global_learning_setting_key||'v158_skai_owned_sweep'; settings._mle_research_index=settings._mle_research_index||ordinal; settings._mle_research_total=settings._mle_research_total||total;
-    return {profile:settings.profile||settings.training_style||'balanced', strategy:settings.strategy||'hybrid', label:'Hive Research Run '+ordinal+' Assignment #'+assignmentId, mlePrecisionLock:true, mleSettings:settings, mleBatch:{batch_id:parseInt(queueId||'0',10)||0,batch_run_id:parseInt(assignmentId||'0',10)||0,batch_type:'Admin SKAI/Hive Research Queue',batch_run_order:parseInt(settings._mle_research_index||ordinal||'1',10)||1,is_control:0,test_variable:settings._mle_global_learning_setting_key||'v158_skai_owned_sweep',test_value:fp}};
+    return {profile:settings.profile||settings.training_style||'balanced', strategy:settings.strategy||'hybrid', label:'Hive Research Run '+ordinal+' Assignment #'+assignmentId, mlePrecisionLock:true, mleSettings:settings, mleBatch:{assignment_id:parseInt(assignmentId||'0',10)||0,batch_id:parseInt(sourceBatchId||'0',10)||0,queue_id:parseInt(queueId||'0',10)||0,lottery_id:parseInt((a.lottery_id||settings.lottery_id||'0'),10)||0,game_id:String(a.game_id||settings.game_id||''),target_draw_date:String(a.target_draw_date||settings.target_draw_date||''),batch_label:'Hive Research Run '+ordinal+' Assignment #'+assignmentId,batch_mode:'admin_hive_research_queue',is_admin_queue:1,batch_run_id:parseInt(assignmentId||'0',10)||0,batch_type:'Admin SKAI/Hive Research Queue',batch_run_order:parseInt(settings._mle_research_index||ordinal||'1',10)||1,is_control:0,test_variable:settings._mle_global_learning_setting_key||'v158_skai_owned_sweep',test_value:fp,source_batch_origin:'mle_admin_hive_queue'}};
   }
   function recordResult(payload, cb){ post('hive_research_record_result', payload, function(res){ if(cb){cb(res||{});} }); }
   function runAssignment(a, indexInChunk, chunkTotal, cb){
@@ -63133,6 +63370,7 @@ $skaiV158Token = \Joomla\CMS\Session\Session::getFormToken();
     var assignmentId = a.assignment_id || settings._mle_research_assignment_id || '';
     var queueId = a.queue_id || settings._mle_research_queue_id || '';
     var fingerprint = a.settings_fingerprint || settings._mle_research_settings_fingerprint || '';
+    var sourceBatchId = a.batch_id || a.batch_header_id || settings.batch_id || settings.batch_header_id || settings._mle_batch_id || 0;
     settings._mle_research_queue_id = queueId;
     settings._mle_research_assignment_id = assignmentId;
     settings._mle_research_type = 'admin_client_research';
@@ -63147,13 +63385,22 @@ $skaiV158Token = \Joomla\CMS\Session\Session::getFormToken();
       mlePrecisionLock: true,
       mleSettings: settings,
       mleBatch: {
-        batch_id: parseInt(queueId || '0', 10) || 0,
+        assignment_id: parseInt(assignmentId || '0', 10) || 0,
+        batch_id: parseInt(sourceBatchId || '0', 10) || 0,
+        queue_id: parseInt(queueId || '0', 10) || 0,
+        lottery_id: parseInt((a.lottery_id || settings.lottery_id || '0'), 10) || 0,
+        game_id: String(a.game_id || settings.game_id || ''),
+        target_draw_date: String(a.target_draw_date || settings.target_draw_date || ''),
+        batch_label: 'Hive Research Chunk Run ' + ordinal + ' Assignment #' + assignmentId,
+        batch_mode: 'admin_hive_research_chunk',
+        is_admin_queue: 1,
         batch_run_id: parseInt(assignmentId || '0', 10) || 0,
         batch_type: 'Admin SKAI/Hive Native Research Chunk',
         batch_run_order: parseInt(settings._mle_research_index || ordinal || '1', 10) || 1,
         is_control: 0,
         test_variable: settings._mle_global_learning_setting_key || 'v156_admin_chunk_sweep',
-        test_value: fingerprint
+        test_value: fingerprint,
+        source_batch_origin: 'mle_admin_hive_queue'
       }
     };
   }
@@ -63255,13 +63502,22 @@ $skaiV158Token = \Joomla\CMS\Session\Session::getFormToken();
       mlePrecisionLock: true,
       mleSettings: settings,
       mleBatch: {
-        batch_id: parseInt(queueId || '0', 10) || 0,
+        assignment_id: parseInt(assignmentId || '0', 10) || 0,
+        batch_id: parseInt(settings.batch_id || settings.batch_header_id || settings._mle_batch_id || '0', 10) || 0,
+        queue_id: parseInt(queueId || '0', 10) || 0,
+        lottery_id: parseInt((settings.lottery_id || '0'), 10) || 0,
+        game_id: String(settings.game_id || ''),
+        target_draw_date: String(settings.target_draw_date || ''),
+        batch_label: 'Hive Research Assignment #' + assignmentId,
+        batch_mode: 'admin_hive_research_queue',
+        is_admin_queue: 1,
         batch_run_id: parseInt(assignmentId || '0', 10) || 0,
         batch_type: 'Admin SKAI/Hive Research Queue',
         batch_run_order: parseInt(settings._mle_research_index || '1', 10) || 1,
         is_control: 0,
         test_variable: settings._mle_global_learning_setting_key || 'v150_admin_sweep',
-        test_value: fingerprint
+        test_value: fingerprint,
+        source_batch_origin: 'mle_admin_hive_queue'
       }
     };
     addBanner('Admin Hive Research Runner: running assignment #' + assignmentId + '...');
