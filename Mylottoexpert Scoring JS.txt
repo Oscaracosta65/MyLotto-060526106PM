@@ -1,0 +1,991 @@
+(function(){
+  'use strict';
+  if (window.__mleV107ForensicProductionRepair) { return; }
+  window.__mleV107ForensicProductionRepair = true;
+
+  if (typeof window.MLE_DEBUG_VISUAL_AUDIT === 'undefined') {
+    window.MLE_DEBUG_VISUAL_AUDIT = false;
+  }
+
+  function qs(s, r){ return (r || document).querySelector(s); }
+  function qsa(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function txt(el){
+    return String(el && (el.textContent || el.innerText) ? (el.textContent || el.innerText) : '').replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+  }
+  function clean(v){ return String(v || '').replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
+  function lower(v){ return String(v || '').toLowerCase(); }
+  function csv(v){
+    var out = [];
+    var parts = String(v || '').split(',');
+    var i;
+    var p;
+    for (i = 0; i < parts.length; i++) {
+      p = clean(parts[i]);
+      if (p !== '') { out.push(p); }
+    }
+    return out;
+  }
+  function toInt(v){
+    var n = parseInt(String(v || '').replace(/[^0-9\-]/g, ''), 10);
+    return isNaN(n) ? 0 : n;
+  }
+  function hitCount(predicted, actual){
+    var map = {};
+    var i;
+    var key;
+    for (i = 0; i < (actual || []).length; i++) {
+      key = String(parseInt(actual[i], 10));
+      if (key !== 'NaN') { map[key] = 1; }
+    }
+    var count = 0;
+    for (i = 0; i < (predicted || []).length; i++) {
+      key = String(parseInt(predicted[i], 10));
+      if (key !== 'NaN' && map[key]) { count++; }
+    }
+    return count;
+  }
+  function metricFromRow(row, attrName, resultText, pattern){
+    var raw = row ? row.getAttribute(attrName) : '';
+    var match;
+    if (raw !== null && raw !== '') { return toInt(raw); }
+    match = String(resultText || '').match(pattern);
+    return match ? toInt(match[1]) : 0;
+  }
+  function numberListText(values){ return (values || []).join(' '); }
+  function anyTextFound(card, patterns){
+    var source = lower(txt(card));
+    var i;
+    for (i = 0; i < (patterns || []).length; i++) {
+      if (patterns[i].test(source)) { return true; }
+    }
+    return false;
+  }
+  function countPredictionSets(row){
+    if (!row) { return 0; }
+    var combo = qsa('.mle-daily-combo-chip,.mle-daily-combo-row .mle-ball-set,.mle-daily-visual-combos .mle-daily-combo-chip', row).length;
+    if (combo > 0) { return combo; }
+    var setRows = qsa('.mle-prediction-set,.mle-pred-set,.mle-prediction-row,.mle-ball-set__main', row).length;
+    if (setRows > 0) { return setRows; }
+    return 1;
+  }
+  function dateScore(v){
+    var t = Date.parse(String(v || ''));
+    return isNaN(t) ? 0 : t;
+  }
+  function closest(el, s){
+    while (el && el.nodeType === 1) {
+      if (el.matches && el.matches(s)) { return el; }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function parseVisualRows(card){
+    var rows = [];
+    qsa('.mle-visual-row', card).forEach(function(row, idx){
+      if (/\b(upcoming|pending|waiting)\b/i.test(txt(row))) { return; }
+      var date = txt(qs('.mle-visual-row__meta strong', row)) || row.getAttribute('data-mle-visual-draw-date') || '';
+      var predictedMain = csv(row.getAttribute('data-mle-visual-predicted-main'));
+      var predictedExtra = csv(row.getAttribute('data-mle-visual-predicted-extra'));
+      var actualMain = csv(row.getAttribute('data-mle-visual-actual-main'));
+      var actualExtra = csv(row.getAttribute('data-mle-visual-actual-extra'));
+      if (!predictedMain.length && !predictedExtra.length && !actualMain.length && !actualExtra.length) { return; }
+      var resultText = txt(qs('.mle-visual-row__result', row));
+      var directMainHits = hitCount(predictedMain, actualMain);
+      var directExtraHits = hitCount(predictedExtra, actualExtra);
+      var parsedMainHits = metricFromRow(row, 'data-mle-visual-main-hits', resultText, /Main hits:\s*(\d+)/i);
+      var parsedExtraHits = metricFromRow(row, 'data-mle-visual-extra-hits', resultText, /Extra hits:\s*(\d+)/i);
+      var parsedTotalHits = metricFromRow(row, 'data-mle-visual-total-hits', resultText, /(\d+)\s*(?:total\s*)?hits?/i);
+      var parsedTop20 = metricFromRow(row, 'data-mle-visual-top20', resultText, /Top\s*20:\s*(\d+)/i);
+      var parsedTop10 = metricFromRow(row, 'data-mle-visual-top10', resultText, /Top\s*10:\s*(\d+)/i);
+      var finalMainHits = directMainHits > 0 ? directMainHits : parsedMainHits;
+      var finalExtraHits = directExtraHits > 0 ? directExtraHits : parsedExtraHits;
+      var finalTotalHits = finalMainHits + finalExtraHits;
+      if (finalTotalHits <= 0 && parsedTotalHits > 0) { finalTotalHits = parsedTotalHits; }
+      rows.push({
+        row: row,
+        date: date,
+        dateScore: dateScore(date),
+        label: txt(qs('.mle-visual-row__meta small', row)),
+        method: txt(qs('.mle-visual-row__meta span', row)),
+        predictedMain: predictedMain,
+        predictedExtra: predictedExtra,
+        actualMain: actualMain,
+        actualExtra: actualExtra,
+        mainHits: finalMainHits,
+        extraHits: finalExtraHits,
+        totalHits: finalTotalHits,
+        top20: parsedTop20,
+        top10: parsedTop10,
+        sourceRecordId: row.getAttribute('data-mle-source-record-id') || row.getAttribute('data-mle-saved-id') || '',
+        savedId: row.getAttribute('data-mle-saved-id') || '',
+        perfId: row.getAttribute('data-mle-perf-id') || '',
+        runUuid: row.getAttribute('data-mle-run-uuid') || '',
+        snapshotRunUuid: row.getAttribute('data-mle-snapshot-run-uuid') || '',
+        runIdentityKey: row.getAttribute('data-mle-run-identity-key') || '',
+        batchUuid: row.getAttribute('data-mle-batch-uuid') || '',
+        batchIndex: parseInt(row.getAttribute('data-mle-batch-index') || '0', 10) || 0,
+        batchTotal: parseInt(row.getAttribute('data-mle-batch-total') || '0', 10) || 0,
+        sourceBatchId: row.getAttribute('data-mle-source-batch-id') || '',
+        sourceBatchRunId: row.getAttribute('data-mle-source-batch-run-id') || '',
+        sourceBatchRunOrder: parseInt(row.getAttribute('data-mle-source-batch-run-order') || '0', 10) || 0,
+        savedRecommendationRankRaw: parseInt(
+          row.getAttribute('data-mle-original-printed-group-number')
+          || row.getAttribute('data-mle-saved-recommendation-rank')
+          || row.getAttribute('data-mle-saved-rank')
+          || row.getAttribute('data-mle-recommendation-rank')
+          || row.getAttribute('data-mle-display-order')
+          || row.getAttribute('data-mle-group-index')
+          || '0',
+          10
+        ) || 0,
+        printedRowOrder: idx + 1,
+        sourceBatchType: row.getAttribute('data-mle-source-batch-type') || '',
+        predictionTargetId: row.getAttribute('data-mle-prediction-target-id') || '',
+        predictionTargetKey: row.getAttribute('data-mle-prediction-target-key') || '',
+        analysisMethodKey: row.getAttribute('data-mle-analysis-method-key') || '',
+        originSource: row.getAttribute('data-mle-origin-source') || '',
+        source: row.getAttribute('data-mle-source') || '',
+        printVerified: row.getAttribute('data-mle-print-verified') === '1',
+        isBest: row.className.indexOf('mle-visual-row--best') !== -1,
+        postDrawHitCount: finalTotalHits
+      });
+    });
+    return rows;
+  }
+
+  function forensicDateKey(v){
+    var raw=String(v||'').replace(/\s+/g,' ').replace(/^\s+|\s+$/g,'');
+    if(!raw){return '';}
+    var t=Date.parse(raw);
+    if(!isNaN(t)){var d=new Date(t); var m=d.getMonth()+1; var day=d.getDate(); return d.getFullYear()+'-'+(m<10?'0'+m:String(m))+'-'+(day<10?'0'+day:String(day));}
+    var mt=raw.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    if(mt){return mt[1]+'-'+(parseInt(mt[2],10)<10?'0'+parseInt(mt[2],10):String(parseInt(mt[2],10)))+'-'+(parseInt(mt[3],10)<10?'0'+parseInt(mt[3],10):String(parseInt(mt[3],10)));}
+    return raw.toLowerCase();
+  }
+  function forensicSameSet(a,b){
+    var aa=(a||[]).map(String).filter(Boolean).sort();
+    var bb=(b||[]).map(String).filter(Boolean).sort();
+    if(!aa.length || !bb.length || aa.length!==bb.length){return false;}
+    for(var i=0;i<aa.length;i++){if(aa[i]!==bb[i]){return false;}}
+    return true;
+  }
+  function forensicRowMatchesDraw(r, draw){
+    if(!r || !draw){return false;}
+    var dateOk=!!(forensicDateKey(draw.date) && forensicDateKey(r.date) && forensicDateKey(draw.date)===forensicDateKey(r.date));
+    var mainOk=forensicSameSet(r.actualMain, draw.main);
+    var extraOk=(!draw.extra.length && !r.actualExtra.length) || forensicSameSet(r.actualExtra, draw.extra);
+    if(mainOk && extraOk){return true;}
+    if(dateOk && mainOk){return true;}
+    return false;
+  }
+  function forensicHasBatchMarker(r){
+    if(!r){return false;}
+    if(r.batchUuid){return true;}
+    if((r.batchTotal||0)>=2 || (r.batchIndex||0)>0){return true;}
+    if(r.sourceBatchId && r.sourceBatchId !== '0'){return true;}
+    if(r.sourceBatchRunId && r.sourceBatchRunId !== '0'){return true;}
+    if(/\b(batch|9-run|nine run|precision|mle_precision)\b/i.test(String((r.method||'')+' '+(r.label||'')+' '+(r.sourceBatchType||'')))){return true;}
+    return false;
+  }
+  function forensicBatchKey(r){
+    var method = String(r.analysisMethodKey || r.method || '');
+    var target = String(r.predictionTargetId || r.predictionTargetKey || '');
+    if (r.sourceBatchId && r.sourceBatchId !== '0') { return 'sourcebatch|' + r.sourceBatchId + '|' + target + '|' + method; }
+    if (r.batchUuid) { return 'batch|' + r.batchUuid + '|' + target + '|' + method; }
+    if ((r.batchTotal || 0) >= 2) { return 'batchtotal|' + String(r.batchTotal || 0) + '|' + target + '|' + method + '|' + forensicDateKey(r.date || ''); }
+    return 'unbatched|' + target + '|' + method + '|' + forensicDateKey(r.date || '');
+  }
+  function forensicBestGroup(rows){
+    var groups = {}, order = [], bestKey = '', bestLen = -1, bestScore = -1, bestRecent = -1;
+    rows.forEach(function(r){
+      var k = forensicBatchKey(r);
+      if (!groups[k]) { groups[k] = []; order.push(k); }
+      groups[k].push(r);
+    });
+    order.forEach(function(k){
+      var g = groups[k], score = 0, recent = 0;
+      g.forEach(function(r){ score += (r.totalHits || 0) + ((r.top20 || 0) * 0.01) + ((r.top10 || 0) * 0.02); recent = Math.max(recent, Date.parse(r.date || '') || 0); });
+      var lenScore = Math.min(g.length, 9);
+      if (lenScore > bestLen || (lenScore === bestLen && recent > bestRecent) || (lenScore === bestLen && recent === bestRecent && score > bestScore)) { bestKey = k; bestLen = lenScore; bestScore = score; bestRecent = recent; }
+    });
+    return groups[bestKey] || [];
+  }
+  function latestBatch(rows, draw){
+    if (!rows.length || !draw) { return []; }
+    var exact = rows.filter(function(r){ return forensicRowMatchesDraw(r, draw); });
+    if (!exact.length) { return []; }
+    var batchRows = exact.filter(forensicHasBatchMarker);
+    if (!batchRows.length) { return []; }
+    var grouped = forensicBestGroup(batchRows);
+    grouped.sort(function(a, b){
+      var ai = a.sourceBatchRunOrder || a.batchIndex || 0;
+      var bi = b.sourceBatchRunOrder || b.batchIndex || 0;
+      if (ai !== bi) { return ai - bi; }
+      return String(b.date).localeCompare(String(a.date));
+    });
+    if (grouped.length > 9) { grouped = grouped.slice(0, 9); }
+    return grouped;
+  }
+
+
+  function parseReportRows(report){
+    var rows = [];
+    if (!report) { return rows; }
+    qsa('.mle-v104-run-report__row', report).forEach(function(row, idx){
+      var text = clean(txt(row));
+      if (!/^(Run|Prediction)\s+\d+\b/i.test(text)) { return; }
+      var total = 0;
+      var mainHits = 0;
+      var extraHits = 0;
+      var top20 = 0;
+      var top10 = 0;
+      var m;
+      m = text.match(/(\d+)\s+Total hits/i);
+      if (!m) { m = text.match(/Total hits\s*:?\s*(\d+)/i); }
+      if (m) { total = toInt(m[1]); }
+      m = text.match(/Main\s*:\s*(\d+)/i);
+      if (!m) { m = text.match(/Main hits\s*:?\s*(\d+)/i); }
+      if (m) { mainHits = toInt(m[1]); }
+      m = text.match(/Extra\s*:\s*(\d+)/i);
+      if (!m) { m = text.match(/Extra hits\s*:?\s*(\d+)/i); }
+      if (m) { extraHits = toInt(m[1]); }
+      m = text.match(/Top\s*20\s*:\s*(\d+)/i);
+      if (m) { top20 = toInt(m[1]); }
+      m = text.match(/Top\s*10\s*:\s*(\d+)/i);
+      if (m) { top10 = toInt(m[1]); }
+      if (total <= 0 && (mainHits > 0 || extraHits > 0)) { total = mainHits + extraHits; }
+      rows.push({
+        row: row,
+        date: '',
+        dateScore: 0,
+        label: '',
+        method: '',
+        predictedMain: [],
+        predictedExtra: [],
+        actualMain: [],
+        actualExtra: [],
+        mainHits: mainHits,
+        extraHits: extraHits,
+        totalHits: total,
+        top20: top20,
+        top10: top10,
+        sourceRecordId: row.getAttribute('data-mle-source-record-id') || row.getAttribute('data-mle-saved-id') || '',
+        savedId: row.getAttribute('data-mle-saved-id') || '',
+        perfId: row.getAttribute('data-mle-perf-id') || '',
+        runUuid: row.getAttribute('data-mle-run-uuid') || '',
+        snapshotRunUuid: row.getAttribute('data-mle-snapshot-run-uuid') || '',
+        runIdentityKey: row.getAttribute('data-mle-run-identity-key') || '',
+        batchUuid: row.getAttribute('data-mle-batch-uuid') || '',
+        batchIndex: idx + 1,
+        batchTotal: 0,
+        sourceBatchId: row.getAttribute('data-mle-source-batch-id') || '',
+        sourceBatchRunId: row.getAttribute('data-mle-source-batch-run-id') || '',
+        sourceBatchRunOrder: idx + 1,
+        savedRecommendationRankRaw: parseInt(
+          row.getAttribute('data-mle-original-printed-group-number')
+          || row.getAttribute('data-mle-saved-recommendation-rank')
+          || row.getAttribute('data-mle-saved-rank')
+          || row.getAttribute('data-mle-recommendation-rank')
+          || row.getAttribute('data-mle-display-order')
+          || row.getAttribute('data-mle-group-index')
+          || String(idx + 1),
+          10
+        ) || 0,
+        sourceBatchType: row.getAttribute('data-mle-source-batch-type') || '',
+        predictionTargetId: row.getAttribute('data-mle-prediction-target-id') || '',
+        predictionTargetKey: row.getAttribute('data-mle-prediction-target-key') || '',
+        analysisMethodKey: row.getAttribute('data-mle-analysis-method-key') || '',
+        originSource: row.getAttribute('data-mle-origin-source') || 'visible_report_row',
+        source: row.getAttribute('data-mle-source') || 'visible_report_row',
+        printVerified: row.getAttribute('data-mle-print-verified') === '1',
+        isBest: row.className.indexOf('mle-visual-row--best') !== -1 || row.className.indexOf('mle-v104-run-report__row--best') !== -1,
+        visibleRunNumber: idx + 1,
+        printedRowOrder: idx + 1,
+        postDrawHitCount: total
+      });
+    });
+    return rows;
+  }
+
+  function bestRun(rows){
+    var best = null;
+    rows.forEach(function(r){
+      if (!best) { best = r; return; }
+      if ((r.totalHits || 0) > (best.totalHits || 0)) { best = r; return; }
+      if ((r.totalHits || 0) === (best.totalHits || 0) && (r.top20 || 0) > (best.top20 || 0)) { best = r; return; }
+      if ((r.totalHits || 0) === (best.totalHits || 0) && (r.top20 || 0) === (best.top20 || 0) && r.isBest && !best.isBest) { best = r; }
+    });
+    return best;
+  }
+  function savedRecommendationRankForRow(row){
+    if (!row) { return 0; }
+    if ((row.savedRecommendationRankRaw || 0) > 0) { return row.savedRecommendationRankRaw; }
+    if ((row.sourceBatchRunOrder || 0) > 0) { return row.sourceBatchRunOrder; }
+    if ((row.batchIndex || 0) > 0) { return row.batchIndex; }
+    if ((row.visibleRunNumber || 0) > 0) { return row.visibleRunNumber; }
+    if ((row.printedRowOrder || 0) > 0) { return row.printedRowOrder; }
+    return 0;
+  }
+  function assignSavedRecommendationRanks(rows){
+    var used = {};
+    var fallback = 1;
+    (rows || []).forEach(function(row){
+      var proposed = savedRecommendationRankForRow(row);
+      if (proposed > 0 && !used[proposed]) {
+        row.savedRecommendationRank = proposed;
+        used[proposed] = 1;
+        return;
+      }
+      while (used[fallback]) { fallback++; }
+      row.savedRecommendationRank = fallback;
+      used[fallback] = 1;
+      fallback++;
+    });
+  }
+  function recommendationBySavedRank(rows, rank){
+    var i;
+    for (i = 0; i < (rows || []).length; i++) {
+      if ((rows[i].savedRecommendationRank || 0) === rank) { return rows[i]; }
+    }
+    return null;
+  }
+
+  function readLastDraw(card){
+    var drawDate = card.getAttribute('data-mle-v102-last-draw-date') || txt(qs('.mle-v102-last-draw-strip__date', card)) || '';
+    return {
+      date: drawDate,
+      main: csv(card.getAttribute('data-mle-v102-last-draw-main')),
+      extra: csv(card.getAttribute('data-mle-v102-last-draw-extra')),
+      source: card.getAttribute('data-mle-v102-last-draw-source') || ''
+    };
+  }
+
+  function setSpanAndBody(cardBox, spanText, strongText, pText){
+    if (!cardBox) { return; }
+    var span = qs('span', cardBox);
+    var strong = qs('strong', cardBox);
+    var p = qs('p', cardBox);
+    if (span) { span.textContent = spanText; }
+    if (strong) { strong.textContent = strongText; }
+    if (p) { p.textContent = pText; }
+  }
+
+  function readHistoryCounts(card, rows){
+    var saved = parseInt(card.getAttribute('data-mle-history-saved-count') || '0', 10);
+    var scored = parseInt(card.getAttribute('data-mle-history-scored-count') || '0', 10);
+    var visibleCompleted = parseInt(card.getAttribute('data-mle-history-completed-visible-count') || '0', 10);
+    var pending = parseInt(card.getAttribute('data-mle-history-pending-count') || card.getAttribute('data-pending-count') || '0', 10);
+    if (isNaN(saved)) { saved = 0; }
+    if (isNaN(scored)) { scored = 0; }
+    if (isNaN(visibleCompleted)) { visibleCompleted = 0; }
+    if (isNaN(pending)) { pending = 0; }
+    if ((rows || []).length > visibleCompleted) { visibleCompleted = (rows || []).length; }
+    if (visibleCompleted > scored) { scored = visibleCompleted; }
+    return { saved: saved, scored: scored, visibleCompleted: visibleCompleted, pending: pending };
+  }
+
+  function ensureHistoryAction(card, report){
+    var actions = qs('.mle-v104-run-report__actions', report);
+    if (!actions || qs('[data-mle-v139-open-history]', actions)) { return; }
+    var target = card.getAttribute('data-mle-cliff-target-review') || '';
+    var panel = qs('.mle-batch-cleanup[id], .mle-adv-pred-summary[id]', card);
+    if (!target && panel) { target = panel.id || ''; }
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mle-v104-run-report__btn mle-section-shortcut-btn';
+    btn.setAttribute('data-mle-v139-open-history', '1');
+    if (target) { btn.setAttribute('data-target-section', target); btn.setAttribute('data-target-panel', target); }
+    btn.textContent = 'View Saved Recommendations & Scored Results';
+    actions.appendChild(btn);
+  }
+
+  function openHistoryPanel(card, targetId){
+    var target = targetId ? document.getElementById(targetId) : null;
+    if (!target) { target = qs('.mle-v104-run-report, .mle-pending-predictions-dropdown, .mle-pending-recommendations, .mle-batch-cleanup, .mle-adv-pred-summary, .mle-saved-runs-panel, .mle-visual-comparison', card); }
+    var reviewSection = qs('[data-mle-card-mode-section="review-runs"]', card);
+    if (reviewSection) {
+      reviewSection.style.display = '';
+      reviewSection.removeAttribute('hidden');
+      reviewSection.setAttribute('aria-hidden', 'false');
+    }
+    if (target) {
+      target.style.display = target.style.display === 'none' ? '' : target.style.display;
+      target.removeAttribute('hidden');
+      target.setAttribute('aria-hidden', 'false');
+      var ownerDetails = closest(target, 'details');
+      if (ownerDetails) { ownerDetails.open = true; }
+      try { target.scrollIntoView({behavior:'smooth', block:'start'}); } catch(e) { target.scrollIntoView(true); }
+      if (!target.hasAttribute('tabindex')) { try { target.setAttribute('tabindex', '-1'); } catch(ignore) {} }
+      try { target.focus({preventScroll:true}); } catch(fe) { try { target.focus(); } catch(ignore2) {} }
+    }
+  }
+
+  function enforceReport(card){
+    var report = qs('.mle-v104-run-report', card);
+    if (!report) { return; }
+
+    var rows = parseVisualRows(card);
+    var draw = readLastDraw(card);
+    var batch = latestBatch(rows, draw);
+    var visibleReportRows = parseReportRows(report);
+    var history = readHistoryCounts(card, rows);
+    var displayBatch = batch.length ? batch : visibleReportRows;
+    var historicalFallback = !displayBatch.length && rows.length ? rows : [];
+    var scoredRecommendationSet = displayBatch.length ? displayBatch : historicalFallback;
+    assignSavedRecommendationRanks(scoredRecommendationSet);
+    var topPreDrawRecommendation = recommendationBySavedRank(scoredRecommendationSet, 1);
+    var secondPreDrawRecommendation = recommendationBySavedRank(scoredRecommendationSet, 2);
+    var bestPostDrawResult = bestRun(scoredRecommendationSet);
+    var best = bestPostDrawResult;
+    // Pre-draw rank is historical evidence and must never be rewritten after scoring.
+    // Post-draw best result is analytical scoring and must not be labeled as original rank #1.
+    ensureHistoryAction(card, report);
+
+    var heroTitle = qs('.mle-v104-run-report__hero h3', report);
+    var heroBody = qs('.mle-v104-run-report__hero p', report);
+    if (heroTitle) { heroTitle.textContent = 'Exact-Draw Scored Prediction Evidence'; }
+    if (heroBody) {
+      if (!displayBatch.length && historicalFallback.length) {
+        heroBody.textContent = 'No exact 9-run batch was matched for the latest draw, but ' + String(history.scored || historicalFallback.length) + ' historical scored run' + ((history.scored || historicalFallback.length) === 1 ? ' is' : 's are') + ' still visible in Review Scored History. This is a matching/filtering distinction, not evidence that history was deleted.';
+      } else if (!displayBatch.length) {
+        heroBody.textContent = history.pending > 0 ? ('No exact scored 9-run batch is ready yet. ' + String(history.pending) + ' pending run' + (history.pending === 1 ? ' is' : 's are') + ' waiting for official draw scoring.') : 'No exact scored 9-run batch is visible for this latest draw yet. Use Review Scored History to inspect saved, scored, and pending rows.';
+      } else if (!batch.length && visibleReportRows.length) {
+        heroBody.textContent = 'Visible scored evidence rows were found. Header totals are reconciled from the displayed run rows because legacy batch identifiers were not available.';
+      } else {
+        heroBody.textContent = 'Rows are grouped by batch UUID, prediction target, and analysis method when those identifiers are available. Legacy rows are shown as visible scored evidence only and are not print verified.';
+      }
+    }
+
+    var metricBoxes = qsa('.mle-v104-run-report__metric', report);
+    var metrics = qsa('.mle-v104-run-report__metric strong', report);
+    if (metricBoxes[0] && qs('span', metricBoxes[0])) { qs('span', metricBoxes[0]).textContent = displayBatch.length ? 'Exact batch rows shown' : 'Historical scored rows'; }
+    if (metricBoxes[1] && qs('span', metricBoxes[1])) { qs('span', metricBoxes[1]).textContent = displayBatch.length ? 'Best exact outcome' : 'Best historical outcome'; }
+    if (metricBoxes[2] && qs('span', metricBoxes[2])) { qs('span', metricBoxes[2]).textContent = 'Pending now'; }
+    if (metrics[0]) { metrics[0].textContent = String(displayBatch.length ? displayBatch.length : (history.scored || historicalFallback.length || 0)); }
+    if (metrics[1]) { metrics[1].textContent = String(best ? (best.totalHits || 0) : 0); }
+    if (metrics[2]) { metrics[2].textContent = String(history.pending || metrics[2].textContent || '0'); }
+
+    var cards = qsa('.mle-v104-run-report__summary-card', report);
+    if (cards[0]) {
+      var drawText = 'Actual main: ' + numberListText(draw.main) + ' | Actual extra: ' + numberListText(draw.extra);
+      if (!draw.main.length && !draw.extra.length) {
+        drawText = 'Latest official draw found, but no scored prediction comparison exists yet.';
+      }
+      setSpanAndBody(cards[0], 'Latest Draw Comparison', draw.date || 'Not loaded yet', drawText);
+    }
+    if (cards[1]) {
+      var bestTitle = topPreDrawRecommendation
+        ? ('Top pre-draw recommendation: Group #' + String(topPreDrawRecommendation.savedRecommendationRank || 1) + ', ' + String(topPreDrawRecommendation.postDrawHitCount || topPreDrawRecommendation.totalHits || 0) + ' hits.')
+        : 'Top pre-draw recommendation: Not available for this saved recommendation set.';
+      var bestBody = secondPreDrawRecommendation
+        ? ('Second pre-draw recommendation: Group #' + String(secondPreDrawRecommendation.savedRecommendationRank || 2) + ', ' + String(secondPreDrawRecommendation.postDrawHitCount || secondPreDrawRecommendation.totalHits || 0) + ' hits.')
+        : 'Second pre-draw recommendation: Not available for this saved recommendation set.';
+      if (bestPostDrawResult) {
+        bestBody += ' Best post-draw result in this saved recommendation set: Group #' + String(bestPostDrawResult.savedRecommendationRank || 0) + ' caught ' + String(bestPostDrawResult.postDrawHitCount || bestPostDrawResult.totalHits || 0) + ' numbers.';
+        if ((bestPostDrawResult.savedRecommendationRank || 0) !== 1) {
+          bestBody += ' This was not the #1 pre-draw recommendation. It was the strongest result after scoring.';
+        }
+      } else if (history.pending > 0) {
+        bestBody += ' Best post-draw result in this saved recommendation set: pending scoring.';
+      } else {
+        bestBody += ' Best post-draw result in this saved recommendation set: not available yet.';
+      }
+      setSpanAndBody(cards[1], 'Top pre-draw recommendation', bestTitle, bestBody);
+    }
+
+    qsa('.mle-v104-run-report__row', report).forEach(function(row, idx){
+      var lead = qs('div strong', row);
+      var labels = qsa('.mle-v104-run-report__cell-label', row);
+      var rowRank = scoredRecommendationSet[idx] && scoredRecommendationSet[idx].savedRecommendationRank ? scoredRecommendationSet[idx].savedRecommendationRank : (idx + 1);
+      if (lead) { lead.textContent = 'Group #' + String(rowRank); }
+      if (labels[0]) { labels[0].textContent = 'Predicted main and extra'; }
+      if (labels[1]) { labels[1].textContent = 'Actual main and extra'; }
+    });
+
+    qsa('[data-mle-v104-action="print-results"]', report).forEach(function(btn){ btn.textContent = 'Print scored evidence report'; });
+    qsa('[data-mle-v104-action="toggle-more"]', report).forEach(function(btn){ btn.textContent = 'Show all 9 runs'; });
+    qsa('[data-mle-v104-action="jump-visual"]', report).forEach(function(btn){ btn.textContent = 'Open detailed proof rows'; });
+  }
+
+  function enforceGuidance(card){
+    var path = qs('.mle-v73-path', card);
+    if (!path) { return; }
+
+    var eyebrow = qs('.mle-v73-path__eyebrow', path);
+    var kicker = qs('.mle-v73-kicker', path);
+    if (eyebrow) { eyebrow.textContent = 'Current Guidance'; }
+    if (kicker) { kicker.textContent = 'Status'; }
+
+    var actionBox = qs('.mle-v73-main__actions', path);
+    if (actionBox) {
+      var reviewBtns = qsa('button[data-mle-v73-action="review"]', actionBox);
+      var i;
+      for (i = 1; i < reviewBtns.length; i++) {
+        if (reviewBtns[i] && reviewBtns[i].parentNode) { reviewBtns[i].parentNode.removeChild(reviewBtns[i]); }
+      }
+    }
+  }
+
+  function enforceCanonicalCreate(card){
+    var createSection = qs('.mle-next-settings-run', card);
+    if (!createSection) { return; }
+    var createId = createSection.id || ('mle-canonical-create-next-skai-batch-' + (card.getAttribute('data-lottery-id') || '0'));
+    createSection.id = createId;
+
+    if (!qs('.mle-v107-canonical-create-title', createSection)) {
+      var titleWrap = document.createElement('div');
+      var titleStrong = document.createElement('strong');
+      titleWrap.className = 'mle-v107-canonical-create-title';
+      titleStrong.textContent = 'Create Next SKAI Batch';
+      titleWrap.appendChild(titleStrong);
+      createSection.insertBefore(titleWrap, createSection.firstChild || null);
+    }
+
+    qsa('button,a', card).forEach(function(btn){
+      var t = lower(txt(btn));
+      if (!t) { return; }
+      var isCreate = /create recommended skai batch test|create recommended next settings run|run recommended 9 batch|create focus 9 batch|open skai precision focus batch|run new batch|create batch|create 9 run skai batch and open skai/.test(t);
+      var isCanonical = btn.hasAttribute('data-nine-batch-submit') || closest(btn, '.mle-next-settings-run') === createSection;
+      if (isCreate && !isCanonical) {
+        btn.setAttribute('data-mle-v107-create-shortcut', '1');
+        btn.setAttribute('data-mle-v107-create-target', createId);
+      }
+    });
+  }
+
+  function enforceRange(card){
+    qsa('.mle-precision-lock__track-wrap', card).forEach(function(wrap){
+      if (!qs('.mle-v107-range-note', wrap)) {
+        var note = document.createElement('div');
+        note.className = 'mle-v107-range-note';
+        note.textContent = 'Range meaning: this shows where stronger scored runs are concentrated.';
+        wrap.appendChild(note);
+      }
+    });
+
+    qsa('.mle-precision-lock__horizon-section', card).forEach(function(section){
+      var zone = qs('.mle-plk-track__zone--horizon', section);
+      var badge = qs('.mle-plk-zone-badge', section);
+      if (!zone && badge) {
+        badge.textContent = 'Full search range still active';
+      }
+    });
+  }
+
+  function ensureBottomToggle(card){
+    var body = qs('.mle-advisory-card__body', card);
+    if (!body) { return; }
+    var bodyId = body.getAttribute('id') || '';
+    if (bodyId === '') {
+      bodyId = 'mle-v107-body-' + String(card.getAttribute('data-lottery-id') || '0');
+      body.setAttribute('id', bodyId);
+    }
+    var wrap = qs('.mle-v107-bottom-toggle-wrap', body);
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'mle-v107-bottom-toggle-wrap';
+      var btn = document.createElement('button');
+      btn.setAttribute('type', 'button');
+      btn.className = 'mle-v107-bottom-toggle';
+      btn.setAttribute('data-mle-bottom-collapse', '1');
+      btn.setAttribute('aria-expanded', 'true');
+      btn.setAttribute('aria-controls', bodyId);
+      btn.textContent = 'Collapse';
+      wrap.appendChild(btn);
+      body.appendChild(wrap);
+    } else {
+      qsa('.mle-v107-bottom-toggle,[data-mle-bottom-collapse="1"]', wrap).forEach(function(btn){
+        btn.setAttribute('aria-controls', bodyId);
+      });
+    }
+  }
+
+  function isOpen(card){
+    var body = qs('.mle-advisory-card__body', card);
+    if (!body) { return false; }
+    return !(body.style.display === 'none' || body.getAttribute('aria-hidden') === 'true');
+  }
+
+  function syncButtons(card, open){
+    qsa('.mle-lottery-toggle,.mle-v107-bottom-toggle,[data-mle-bottom-collapse="1"]', card).forEach(function(btn){
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      var span = qs('span', btn);
+      if (span) { span.textContent = open ? 'Collapse' : 'Expand'; }
+      else { btn.textContent = open ? 'Collapse' : 'Expand'; }
+    });
+  }
+
+  function openCard(card){
+    if (!card) { return; }
+    var body = qs('.mle-advisory-card__body', card);
+    if (body) {
+      body.style.display = 'block';
+      body.setAttribute('aria-hidden', 'false');
+    }
+    card.classList.remove('mle-v107-card-collapsed');
+    syncButtons(card, true);
+  }
+
+  function closeCard(card){
+    if (!card) { return; }
+    var body = qs('.mle-advisory-card__body', card);
+    if (body) {
+      body.style.display = 'none';
+      body.setAttribute('aria-hidden', 'true');
+    }
+    card.classList.add('mle-v107-card-collapsed');
+    syncButtons(card, false);
+  }
+
+  function toggleCard(card){
+    if (!card) { return; }
+    if (isOpen(card)) { closeCard(card); }
+    else { openCard(card); }
+  }
+
+  window.mleV107OpenCard = openCard;
+  window.mleV107CloseCard = closeCard;
+  window.mleV107ToggleCard = toggleCard;
+
+  // [[MLE_PHASE2D_CHUNKED_VISUAL_SCORING_RUNNER_2026_05_23]]
+  // The legacy visual-scoring repair pass used to process every lottery card in one
+  // synchronous sweep. On large MyLotto pages this created long tasks and hurt LCP.
+  // Keep the same repairs, but process cards in small chunks so the browser can paint
+  // and respond between batches.
+  var __mleV139RunQueued = false;
+  function processOneCard(card){
+    if (!card) { return; }
+    ensureBottomToggle(card);
+    enforceGuidance(card);
+    enforceCanonicalCreate(card);
+    enforceRange(card);
+    enforceReport(card);
+    syncButtons(card, isOpen(card));
+  }
+  function processCardChunk(cards, index){
+    var i = index || 0;
+    var started = (window.performance && performance.now) ? performance.now() : Date.now();
+    var budgetMs = 24;
+    var maxPerChunk = 4;
+    var processed = 0;
+    while (i < cards.length && processed < maxPerChunk) {
+      processOneCard(cards[i]);
+      i++;
+      processed++;
+      if (((window.performance && performance.now) ? performance.now() : Date.now()) - started > budgetMs) { break; }
+    }
+    if (i < cards.length) {
+      window.setTimeout(function(){ processCardChunk(cards, i); }, 35);
+    }
+  }
+  function runAll(){
+    if (__mleV139RunQueued) { return; }
+    __mleV139RunQueued = true;
+    window.setTimeout(function(){
+      __mleV139RunQueued = false;
+      processCardChunk(qsa('.mle-advisory-card[data-lottery-id]'), 0);
+    }, 0);
+  }
+
+  document.addEventListener('click', function(e){
+    var target = e.target;
+    var createShortcut = target && target.closest ? target.closest('[data-mle-v107-create-shortcut="1"]') : null;
+    if (createShortcut) {
+      var card = closest(createShortcut, '.mle-advisory-card');
+      var id = createShortcut.getAttribute('data-mle-v107-create-target');
+      var section = id ? document.getElementById(id) : null;
+      if (card && section) {
+        e.preventDefault();
+        e.stopPropagation();
+        openCard(card);
+        try { section.scrollIntoView({behavior:'smooth', block:'start'}); } catch (err) { section.scrollIntoView(true); }
+      }
+      return;
+    }
+
+    var bottomToggle = target && target.closest ? target.closest('.mle-v107-bottom-toggle,[data-mle-bottom-collapse="1"]') : null;
+    if (!bottomToggle) { return; }
+    var owner = closest(bottomToggle, '.mle-advisory-card');
+    if (!owner) { return; }
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
+    toggleCard(owner);
+  }, true);
+
+  document.addEventListener('click', function(e){
+    var btn = e.target && e.target.closest ? e.target.closest('[data-mle-v139-open-history]') : null;
+    if (!btn) { return; }
+    var card = closest(btn, '.mle-advisory-card');
+    if (!card) { return; }
+    e.preventDefault();
+    e.stopPropagation();
+    openHistoryPanel(card, btn.getAttribute('data-target-section') || '');
+  }, true);
+
+  window.mleAuditBallRendering = function(){
+    var rows = [];
+    qsa('.mle-v102-ball,.mle-v100-ball,.mle-lottery-outer-resultbar__ball,.mle-v104-ball,.mle-official-draw-ball,.mle-official-pred-ball,.prc-num').forEach(function(ball, idx){
+      var cs = window.getComputedStyle ? window.getComputedStyle(ball) : null;
+      var cn = String(ball.className || '');
+      var role = 'predicted_main';
+      if (/extra/.test(cn) && /hit|match/.test(cn)) { role = 'hit_extra'; }
+      else if (/extra/.test(cn)) { role = /actual|official-draw/.test(cn) ? 'actual_extra' : 'predicted_extra'; }
+      else if (/hit|match/.test(cn)) { role = 'hit_main'; }
+      else if (/actual|official-draw/.test(cn)) { role = 'actual_main'; }
+      else if (/future|keep/.test(cn)) { role = 'future_advice'; }
+      rows.push({
+        index: idx,
+        className: cn,
+        displayedNumber: txt(ball),
+        computedColor: cs ? cs.color : '',
+        computedBackground: cs ? cs.backgroundColor : '',
+        ballRole: role,
+        contrastWarning: ''
+      });
+    });
+    if (window.console && console.table) { console.table(rows); }
+    else if (window.console) { console.log(rows); }
+    return rows;
+  };
+
+  window.mleAuditPrevious9RunBatch = function(){
+    var rows = [];
+    qsa('.mle-advisory-card[data-lottery-id]').forEach(function(card){
+      var visual = parseVisualRows(card);
+      var draw = readLastDraw(card);
+      var report = qs('.mle-v104-run-report', card);
+      var batch = latestBatch(visual, draw);
+      var visibleReportRows = parseReportRows(report);
+      var displayBatch = batch.length ? batch : visibleReportRows;
+      var best = bestRun(displayBatch);
+      var setCounts = [];
+      displayBatch.forEach(function(item){
+        setCounts.push(String(countPredictionSets(item && item.row ? item.row : null)));
+      });
+      rows.push({
+        cardTitle: txt(qs('.mle-advisory-card__lottery-name', card)),
+        gameType: card.getAttribute('data-game-id') || '',
+        pickSize: visual.length ? (visual[0].predictedMain || []).length : 0,
+        extraCount: visual.length ? (visual[0].predictedExtra || []).length : 0,
+        latestDrawDate: draw.date || '',
+        actualMainNumbers: numberListText(draw.main),
+        actualExtraNumbers: numberListText(draw.extra),
+        exactDrawBatchFound: batch.length > 0,
+        historicalScoredRowsFound: visual.length > 0,
+        visibleReportRowsFound: visibleReportRows.length > 0,
+        previousBatchFound: displayBatch.length > 0 || visual.length > 0,
+        scoredRunCount: displayBatch.length || visual.length,
+        predictionSetCountPerRun: setCounts.length ? setCounts.join(',') : '0',
+        numbersConcatenated: false,
+        bestRunId: best ? ('Run ' + String(displayBatch.indexOf(best) + 1)) : '',
+        totalHits: best ? (best.totalHits || 0) : 0,
+        extraHits: best ? (best.extraHits || 0) : 0,
+        targetSectionExists: !!qs('.mle-v104-run-report', card)
+      });
+    });
+    if (window.console && console.table) { console.table(rows); }
+    else if (window.console) { console.log(rows); }
+    return rows;
+  };
+
+  window.mleAuditCardGuidance = function(){
+    var rows = [];
+    qsa('.mle-advisory-card[data-lottery-id]').forEach(function(card){
+      var pending = parseInt(card.getAttribute('data-pending-count') || '0', 10);
+      if (isNaN(pending)) { pending = 0; }
+      var reviewButtons = qsa('button,a', card).filter(function(btn){ return /review pending runs/i.test(lower(txt(btn))); }).length;
+      var createButtons = qsa('button,a', card).filter(function(btn){ return /create .*batch|run recommended 9|create focus 9/.test(lower(txt(btn))); }).length;
+      rows.push({
+        cardTitle: txt(qs('.mle-advisory-card__lottery-name', card)),
+        duplicateGuidancePanels: qsa('.mle-v73-path,.mle-v70-guide', card).length > 1,
+        duplicateReviewPendingButtons: reviewButtons > 1,
+        duplicateCreateBatchButtons: createButtons > 1,
+        currentPendingCount: pending,
+        finalNextAction: txt(qs('.mle-v73-main__actions button,.mle-v73-main__actions a', card)) || ''
+      });
+    });
+    if (window.console && console.table) { console.table(rows); }
+    else if (window.console) { console.log(rows); }
+    return rows;
+  };
+
+  window.mleAuditCollapseButtons = function(){
+    var rows = [];
+    qsa('.mle-advisory-card[data-lottery-id]').forEach(function(card){
+      var top = qs('.mle-lottery-toggle', card);
+      var bottom = qs('.mle-v107-bottom-toggle,[data-mle-bottom-collapse="1"]', card);
+      var body = qs('.mle-advisory-card__body', card);
+      rows.push({
+        cardTitle: txt(qs('.mle-advisory-card__lottery-name', card)),
+        topButtonFound: !!top,
+        bottomButtonFound: !!bottom,
+        targetCard: !!card,
+        topAriaExpanded: top ? top.getAttribute('aria-expanded') : '',
+        bottomAriaExpanded: bottom ? bottom.getAttribute('aria-expanded') : '',
+        cardCollapsedState: body ? (body.getAttribute('aria-hidden') === 'true' || body.style.display === 'none') : false,
+        synchronized: (!!top && !!bottom) ? (top.getAttribute('aria-expanded') === bottom.getAttribute('aria-expanded')) : false
+      });
+    });
+    if (window.console && console.table) { console.table(rows); }
+    else if (window.console) { console.log(rows); }
+    return rows;
+  };
+
+  window.mleAuditNumberStructure = function(){
+    var rows = [];
+    qsa('.mle-advisory-card[data-lottery-id]').forEach(function(card){
+      var visual = parseVisualRows(card);
+      var draw = readLastDraw(card);
+      var inferredPick = visual.length ? (visual[0].predictedMain || []).length : draw.main.length;
+      var inferredExtra = visual.length ? (visual[0].predictedExtra || []).length : draw.extra.length;
+      var gameWarn = inferredPick > 0 ? '' : 'Game number structure could not be fully verified.';
+      rows.push({
+        cardTitle: txt(qs('.mle-advisory-card__lottery-name', card)),
+        gameID: card.getAttribute('data-game-id') || '',
+        lotteryID: card.getAttribute('data-lottery-id') || '',
+        inferredPickSize: inferredPick,
+        inferredExtraCount: inferredExtra,
+        actualMainNumbers: numberListText(draw.main),
+        actualExtraNumbers: numberListText(draw.extra),
+        predictedMainCount: visual.length ? (visual[0].predictedMain || []).length : 0,
+        predictedExtraCount: visual.length ? (visual[0].predictedExtra || []).length : 0,
+        concatenationWarning: false,
+        gameTypeWarning: gameWarn
+      });
+    });
+    if (window.console && console.table) { console.table(rows); }
+    else if (window.console) { console.log(rows); }
+    return rows;
+  };
+
+  window.mleAuditLatestDrawComparison = function(){
+    var rows = [];
+    qsa('.mle-advisory-card[data-lottery-id]').forEach(function(card){
+      var draw = readLastDraw(card);
+      var rowsVisual = parseVisualRows(card);
+      var batch = latestBatch(rowsVisual, draw);
+      var best = bestRun(batch);
+      rows.push({
+        cardTitle: txt(qs('.mle-advisory-card__lottery-name', card)),
+        latestDrawDate: draw.date || '',
+        actualMain: numberListText(draw.main),
+        actualExtra: numberListText(draw.extra),
+        comparedPredictionFound: batch.length > 0,
+        comparisonSource: draw.source || 'visual_rows',
+        comparisonBinding: best ? forensicBatchKey(best) : '',
+        sourceRecordId: best ? (best.sourceRecordId || '') : '',
+        runUuid: best ? (best.runUuid || '') : '',
+        batchUuid: best ? (best.batchUuid || '') : '',
+        predictionTargetId: best ? (best.predictionTargetId || '') : '',
+        analysisMethodKey: best ? (best.analysisMethodKey || '') : '',
+        printVerified: best ? !!best.printVerified : false,
+        predictedMain: best ? numberListText(best.predictedMain) : '',
+        predictedExtra: best ? numberListText(best.predictedExtra) : '',
+        mainHits: best ? (best.mainHits || 0) : 0,
+        extraHits: best ? (best.extraHits || 0) : 0,
+        totalHits: best ? (best.totalHits || 0) : 0,
+        comparisonMode: 'latest_draw_identity_bound_when_available'
+      });
+    });
+    if (window.console && console.table) { console.table(rows); }
+    else if (window.console) { console.log(rows); }
+    return rows;
+  };
+
+  window.mleAuditForensicVisualRows = function(){
+    var rows = [];
+    qsa('.mle-advisory-card[data-lottery-id]').forEach(function(card){
+      parseVisualRows(card).forEach(function(r){
+        rows.push({
+          cardTitle: txt(qs('.mle-advisory-card__lottery-name', card)),
+          drawDate: r.date || '',
+          sourceRecordId: r.sourceRecordId || '',
+          savedId: r.savedId || '',
+          perfId: r.perfId || '',
+          runUuid: r.runUuid || '',
+          snapshotRunUuid: r.snapshotRunUuid || '',
+          runIdentityKey: r.runIdentityKey || '',
+          batchUuid: r.batchUuid || '',
+          batchIndex: r.batchIndex || 0,
+          batchTotal: r.batchTotal || 0,
+          predictionTargetId: r.predictionTargetId || '',
+          predictionTargetKey: r.predictionTargetKey || '',
+          analysisMethodKey: r.analysisMethodKey || '',
+          originSource: r.originSource || '',
+          source: r.source || '',
+          printVerified: !!r.printVerified,
+          predictedMain: numberListText(r.predictedMain),
+          predictedExtra: numberListText(r.predictedExtra),
+          actualMain: numberListText(r.actualMain),
+          actualExtra: numberListText(r.actualExtra),
+          totalHits: r.totalHits || 0,
+          batchBinding: forensicBatchKey(r)
+        });
+      });
+    });
+    if (window.console && console.table) { console.table(rows); }
+    else if (window.console) { console.log(rows); }
+    return rows;
+  };
+
+  window.mleAuditFeaturePreservation = function(){
+    var rows = [];
+    qsa('.mle-advisory-card[data-lottery-id]').forEach(function(card){
+      var title = txt(qs('.mle-advisory-card__lottery-name', card));
+      var hasPending = !!qs('.mle-pending-recommendations,.mle-pending-predictions-dropdown,.mle-pending-prediction-row', card);
+      var hasPreviousDraw = !!qs('.mle-v102-last-draw-strip,.mle-v102-after-draw-proof,.mle-v100-afterdraw', card);
+      var hasLatestComp = anyTextFound(card, [/latest draw comparison/i, /after draw credibility check/i, /result check/i]);
+      var hasBestHistorical = anyTextFound(card, [/best historical visible result/i, /best result in this batch/i, /best visible result/i]);
+      var hasPrevBatch = !!qs('.mle-v104-run-report,.mle-v104-history-pill', card);
+      var hasOptimizer = !!qs('.mle-visual-proof,.mle-visual-comparison,.mle-learning-track,.mle-strong-evidence', card);
+      var hasGuidance = !!qs('.mle-v73-path,.mle-v70-guide', card);
+      var hasChecklist = anyTextFound(card, [/progress checklist/i]) || !!qs('.mle-v70-checklist,.mle-v73-checklist', card);
+      var hasActions = anyTextFound(card, [/quick actions/i]) || !!qs('.mle-v73-main__actions,.mle-v70-actions', card);
+      var hasPrint = qsa('button,a', card).filter(function(btn){ return /print|reprint/i.test(lower(txt(btn))); }).length > 0;
+      var hasReview = qsa('button,a', card).filter(function(btn){ return /review pending runs|review/i.test(lower(txt(btn))); }).length > 0;
+      var hasSkai = qsa('button,a', card).filter(function(btn){ return /\bskai\b/i.test(txt(btn)); }).length > 0;
+      var hasCollapse = !!qs('.mle-lottery-toggle,.mle-v107-bottom-toggle,[data-mle-bottom-collapse="1"]', card);
+      var warnings = [];
+      if (!hasPending) { warnings.push('pending recommendations missing'); }
+      if (!hasPrevBatch) { warnings.push('previous 9-run batch report missing'); }
+      if (!hasOptimizer) { warnings.push('optimizer evidence missing'); }
+      if (!hasGuidance) { warnings.push('guidance section missing'); }
+      if (!hasActions) { warnings.push('quick actions missing'); }
+      if (!hasPrint) { warnings.push('optional print or reprint action missing'); }
+      if (!hasSkai) { warnings.push('skai action missing'); }
+      if (!hasCollapse) { warnings.push('collapse actions missing'); }
+      rows.push({
+        cardTitle: title,
+        pendingRecommendationsFound: hasPending,
+        previousDrawResultFound: hasPreviousDraw,
+        latestDrawComparisonFound: hasLatestComp,
+        bestHistoricalResultFound: hasBestHistorical,
+        previous9RunBatchReportFound: hasPrevBatch,
+        optimizerEvidenceFound: hasOptimizer,
+        currentGuidanceFound: hasGuidance,
+        progressChecklistFound: hasChecklist,
+        quickActionsFound: hasActions,
+        printButtonsFound: hasPrint,
+        reviewPendingButtonsFound: hasReview,
+        skaiButtonsFound: hasSkai,
+        collapseButtonsFound: hasCollapse,
+        missingFeatureWarnings: warnings.join(' | ')
+      });
+    });
+    if (window.console && console.table) { console.table(rows); }
+    else if (window.console) { console.log(rows); }
+    return rows;
+  };
+
+  // Phase 2D: one queued startup pass is enough after the asset is loaded.
+  // Additional passes are triggered by user interaction and MutationObserver-style
+  // repairs elsewhere; avoid repeated heavy startup sweeps.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(runAll, 300); });
+  } else {
+    setTimeout(runAll, 300);
+  }
+  window.addEventListener('load', function(){ setTimeout(runAll, 1200); });
+})();
